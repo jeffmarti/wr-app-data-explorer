@@ -20,7 +20,7 @@
 # waiting-times app" -> "Run workflow".
 #
 # GitHub secrets needed (repo Settings -> Secrets and variables -> Actions):
-#   RSCONNECT_CLIENT_ID, RSCONNECT_CLIENT_SECRET
+#   RSCLOUD_CLIENT_ID, RSCLOUD_CLIENT_SECRET
 #   (login.posit.cloud -> Credentials -> New Credentials, "Use with" = Connect Cloud)
 # ==============================================================================
 
@@ -107,8 +107,8 @@ jobs:
 
       - name: Deploy to Posit Connect Cloud (existing content ID)
         env:
-          RSCONNECT_CLIENT_ID:     ${{ secrets.RSCONNECT_CLIENT_ID }}
-          RSCONNECT_CLIENT_SECRET: ${{ secrets.RSCONNECT_CLIENT_SECRET }}
+          RSCONNECT_CLIENT_ID:     ${{ secrets.RSCLOUD_CLIENT_ID }}
+          RSCONNECT_CLIENT_SECRET: ${{ secrets.RSCLOUD_CLIENT_SECRET }}
         run: |
           # Deployment record: tells rsconnect this content already exists, so
           # it updates it instead of creating new content.
@@ -128,6 +128,9 @@ jobs:
           asStatic: FALSE
           EOF
           Rscript - <<'EOF'
+          if (!nzchar(Sys.getenv("RSCONNECT_CLIENT_ID")) || !nzchar(Sys.getenv("RSCONNECT_CLIENT_SECRET"))) {
+            stop("GitHub secrets RSCLOUD_CLIENT_ID / RSCLOUD_CLIENT_SECRET are missing or empty.")
+          }
           rsconnect::connectCloudClientCredentials(
             clientId     = Sys.getenv("RSCONNECT_CLIENT_ID"),
             clientSecret = Sys.getenv("RSCONNECT_CLIENT_SECRET"),

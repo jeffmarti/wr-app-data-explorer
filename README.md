@@ -49,7 +49,7 @@ wr-app-data-explorer/                 <- RStudio project folder = GitHub repo
 2. **Create Connect Cloud credentials**: <https://login.posit.cloud/identity/credentials>
    > New Credentials, "Use with" = **Connect Cloud**. Copy the client ID and secret.
 3. **Add them as GitHub secrets** (repo Settings > Secrets and variables > Actions >
-   New repository secret): `RSCONNECT_CLIENT_ID` and `RSCONNECT_CLIENT_SECRET`.
+   New repository secret): `RSCLOUD_CLIENT_ID` and `RSCLOUD_CLIENT_SECRET`.
 4. **Check the app's Variables** on Connect Cloud include `WA_SOCRATA_TOKEN`
    (used by the Processing Times tab). They carry over between deploys.
 5. **Test**: GitHub > Actions > "Refresh and deploy waiting-times app" > Run workflow.
