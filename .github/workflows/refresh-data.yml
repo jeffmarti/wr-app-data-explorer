@@ -68,6 +68,8 @@ jobs:
 
       # Pipeline packages + everything app.R loads (deployApp records the
       # versions installed here as the app's environment on Connect Cloud).
+      # cpp11 is build-time only (tidyr, timechange, isoband): the binaries
+      # don't pull it in, but rsconnect's dependency snapshot requires it.
       - name: Install R packages
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
@@ -87,7 +89,7 @@ jobs:
             any::DT
             any::tidyr
             any::rsconnect
-            any::cpp11   # build-time only (tidyr, timechange, isoband); binaries skip it, but rsconnect's snapshot requires it
+            any::cpp11
 
       - name: Run the data pipeline
         if: github.event_name != 'push'
