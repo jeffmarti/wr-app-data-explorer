@@ -1,0 +1,157 @@
+# ==============================================================================
+# refresh-data.yml — weekly data refresh + deploy of the waiting-times app
+# ------------------------------------------------------------------------------
+# 1. (schedule / manual run) Runs pipeline/run_pipeline.R and commits the
+#    refreshed data/wr_data.rds back to the repo.
+# 2. (always) Deploys the app to the EXISTING Posit Connect Cloud content item
+#    below with rsconnect::deployApp(appId = ...). Deploying to that content ID
+#    keeps its URL, which the old shinyapps.io address redirects to:
+#      waterwater.shinyapps.io/wr-app-data
+#        -> 01a12284-53a7-e128-5384-1df2201047c9.share.connect.posit.cloud
+#    (Connect Cloud's own "publish from GitHub" would create a NEW content item.)
+#
+# Also runs on a push to main that changes the app, so code edits deploy too.
+# (Pushes made by this workflow itself don't re-trigger it.)
+#
+# Schedule: Mondays 15:17 UTC (8:17 am Pacific daylight / 7:17 am standard) —
+# 30 minutes after the wr-applications refresh, so the two don't hit Ecology's
+# search page at the same time.
+# Run it by hand any time: GitHub repo -> Actions -> "Refresh and deploy
+# waiting-times app" -> "Run workflow".
+#
+# GitHub secrets needed (repo Settings -> Secrets and variables -> Actions):
+#   RSCONNECT_CLIENT_ID, RSCONNECT_CLIENT_SECRET
+#   (login.posit.cloud -> Credentials -> New Credentials, "Use with" = Connect Cloud)
+# ==============================================================================
+
+name: Refresh and deploy waiting-times app
+
+on:
+  schedule:
+    - cron: "17 15 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app.R"
+      - "data/**"
+      - "www/**"
+      - "*.geojson"
+
+permissions:
+  contents: write          # lets the job push the refreshed data
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      CONNECT_ACCOUNT:    waterwater
+      CONNECT_CONTENT_ID: 01a12284-53a7-e128-5384-1df2201047c9
+      APP_NAME:           wr-app-data-explorer
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+          use-public-rspm: true
+
+      # Pipeline packages + everything app.R loads (deployApp records the
+      # versions installed here as the app's environment on Connect Cloud).
+      - name: Install R packages
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::dplyr
+            any::lubridate
+            any::stringr
+            any::readxl
+            any::httr2
+            any::xml2
+            any::curl
+            any::shiny
+            any::ggplot2
+            any::rlang
+            any::leaflet
+            any::sf
+            any::DT
+            any::tidyr
+            any::rsconnect
+
+      - name: Run the data pipeline
+        if: github.event_name != 'push'
+        run: Rscript pipeline/run_pipeline.R
+
+      - name: Commit refreshed data
+        if: github.event_name != 'push'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/wr_data.rds
+          if git diff --cached --quiet; then
+            echo "No data changes to commit."
+          else
+            git commit -m "Weekly data refresh $(date -u +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: Deploy to Posit Connect Cloud (existing content ID)
+        env:
+          RSCONNECT_CLIENT_ID:     ${{ secrets.RSCONNECT_CLIENT_ID }}
+          RSCONNECT_CLIENT_SECRET: ${{ secrets.RSCONNECT_CLIENT_SECRET }}
+        run: |
+          # Deployment record: tells rsconnect this content already exists, so
+          # it updates it instead of creating new content.
+          mkdir -p "rsconnect/connect.posit.cloud/$CONNECT_ACCOUNT"
+          cat > "rsconnect/connect.posit.cloud/$CONNECT_ACCOUNT/$APP_NAME.dcf" <<EOF
+          name: $APP_NAME
+          title: $APP_NAME
+          username: $CONNECT_ACCOUNT
+          account: $CONNECT_ACCOUNT
+          server: connect.posit.cloud
+          hostUrl: https://api.connect.posit.cloud/v1
+          appId: $CONNECT_CONTENT_ID
+          bundleId:
+          url: https://connect.posit.cloud/$CONNECT_ACCOUNT/content/$CONNECT_CONTENT_ID
+          version: 1
+          asMultiple: FALSE
+          asStatic: FALSE
+          EOF
+          Rscript - <<'EOF'
+          rsconnect::connectCloudClientCredentials(
+            clientId     = Sys.getenv("RSCONNECT_CLIENT_ID"),
+            clientSecret = Sys.getenv("RSCONNECT_CLIENT_SECRET"),
+            accountName  = Sys.getenv("CONNECT_ACCOUNT")
+          )
+          rsconnect::deployApp(
+            appDir      = ".",
+            appFiles    = c("app.R", "data/wr_data.rds",
+                            "wria_boundaries.geojson", "county_boundaries.geojson",
+                            "www/wa_water_rights.svg"),
+            appName     = Sys.getenv("APP_NAME"),
+            appId       = Sys.getenv("CONNECT_CONTENT_ID"),
+            account     = Sys.getenv("CONNECT_ACCOUNT"),
+            server      = "connect.posit.cloud",
+            forceUpdate = TRUE,
+            launch.browser = FALSE
+          )
+          EOF
+
+      - name: Keep the run's download for 14 days (for troubleshooting)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-raw-${{ github.run_number }}
+          path: pipeline/raw/
+          retention-days: 14
+          if-no-files-found: ignore
