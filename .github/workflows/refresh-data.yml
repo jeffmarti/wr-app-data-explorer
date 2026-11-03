@@ -87,6 +87,7 @@ jobs:
             any::DT
             any::tidyr
             any::rsconnect
+            any::cpp11   # build-time only (tidyr, timechange, isoband); binaries skip it, but rsconnect's snapshot requires it
 
       - name: Run the data pipeline
         if: github.event_name != 'push'
