@@ -139,7 +139,13 @@ jobs:
             clientSecret = Sys.getenv("RSCONNECT_CLIENT_SECRET"),
             accountName  = Sys.getenv("CONNECT_ACCOUNT")
           )
-          rsconnect::deployApp(
+          # Packages here were installed from a repo named "RSPM" (Linux
+          # binaries). rsconnect writes each package's repo URL into the
+          # manifest from getOption("repos"), so point both names at
+          # Package Manager's plain CRAN mirror that Connect Cloud can use.
+          options(repos = c(CRAN = "https://packagemanager.posit.co/cran/latest",
+                            RSPM = "https://packagemanager.posit.co/cran/latest"))
+          ok <- rsconnect::deployApp(
             appDir      = ".",
             appFiles    = c("app.R", "data/wr_data.rds",
                             "wria_boundaries.geojson", "county_boundaries.geojson",
@@ -151,6 +157,8 @@ jobs:
             forceUpdate = TRUE,
             launch.browser = FALSE
           )
+          # deployApp() doesn't error when Connect Cloud rejects the bundle
+          if (!isTRUE(ok)) stop("Connect Cloud reported the deployment failed (see log above).")
           EOF
 
       - name: Keep the run's download for 14 days (for troubleshooting)
