@@ -130,6 +130,9 @@ jobs:
           asMultiple: FALSE
           asStatic: FALSE
           EOF
+          # setup-r sets this; it would replace the repos option below in the
+          # renv snapshot rsconnect uses, leaving "RSPM" packages with no URL.
+          unset RENV_CONFIG_REPOS_OVERRIDE
           Rscript - <<'EOF'
           if (!nzchar(Sys.getenv("RSCONNECT_CLIENT_ID")) || !nzchar(Sys.getenv("RSCONNECT_CLIENT_SECRET"))) {
             stop("GitHub secrets RSCLOUD_CLIENT_ID / RSCLOUD_CLIENT_SECRET are missing or empty.")
@@ -141,9 +144,9 @@ jobs:
           )
           # Packages here were installed from a repo named "RSPM" (Linux
           # binaries). rsconnect writes each package's repo URL into the
-          # manifest from getOption("repos"), so point both names at
-          # Package Manager's plain CRAN mirror that Connect Cloud can use.
-          options(repos = c(CRAN = "https://packagemanager.posit.co/cran/latest",
+          # manifest from getOption("repos"), so give "RSPM" a source URL
+          # Connect Cloud can download from.
+          options(repos = c(CRAN = "https://cloud.r-project.org",
                             RSPM = "https://packagemanager.posit.co/cran/latest"))
           ok <- rsconnect::deployApp(
             appDir      = ".",
