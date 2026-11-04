@@ -130,9 +130,6 @@ jobs:
           asMultiple: FALSE
           asStatic: FALSE
           EOF
-          # setup-r sets this; it would replace the repos option below in the
-          # renv snapshot rsconnect uses, leaving "RSPM" packages with no URL.
-          unset RENV_CONFIG_REPOS_OVERRIDE
           Rscript - <<'EOF'
           if (!nzchar(Sys.getenv("RSCONNECT_CLIENT_ID")) || !nzchar(Sys.getenv("RSCONNECT_CLIENT_SECRET"))) {
             stop("GitHub secrets RSCLOUD_CLIENT_ID / RSCLOUD_CLIENT_SECRET are missing or empty.")
@@ -143,17 +140,34 @@ jobs:
             accountName  = Sys.getenv("CONNECT_ACCOUNT")
           )
           # Packages here were installed from a repo named "RSPM" (Linux
-          # binaries). rsconnect writes each package's repo URL into the
-          # manifest from getOption("repos"), so give "RSPM" a source URL
-          # Connect Cloud can download from.
-          options(repos = c(CRAN = "https://cloud.r-project.org",
-                            RSPM = "https://packagemanager.posit.co/cran/latest"))
+          # binaries), and rsconnect leaves them in the manifest with no
+          # usable URL, so Connect Cloud can't download them. Write the
+          # manifest, point any package without an http(s) repository at
+          # Package Manager's CRAN mirror, then deploy from that manifest.
+          PPM <- "https://packagemanager.posit.co/cran/latest"
+          rsconnect::writeManifest(
+            appDir   = ".",
+            appFiles = c("app.R", "data/wr_data.rds",
+                         "wria_boundaries.geojson", "county_boundaries.geojson",
+                         "www/wa_water_rights.svg")
+          )
+          m <- jsonlite::read_json("manifest.json")
+          src  <- vapply(m$packages, function(p) paste0(p$Source,     ""), "")
+          repo <- vapply(m$packages, function(p) paste0(p$Repository, ""), "")
+          cat("Manifest package sources as written by rsconnect:\n")
+          print(table(Source = src, Repository = substr(repo, 1, 60)))
+          fix <- !grepl("^https?://", repo) & !tolower(src) %in% c("github", "gitlab", "bitbucket")
+          for (p in names(m$packages)[fix]) {
+            m$packages[[p]]$Source     <- "CRAN"
+            m$packages[[p]]$Repository <- PPM
+          }
+          cat("Pointed", sum(fix), "packages at", PPM, "\n")
+          jsonlite::write_json(m, "manifest.json", auto_unbox = TRUE, pretty = TRUE,
+                               null = "null", na = "null", digits = NA)
           ok <- rsconnect::deployApp(
-            appDir      = ".",
-            appFiles    = c("app.R", "data/wr_data.rds",
-                            "wria_boundaries.geojson", "county_boundaries.geojson",
-                            "www/wa_water_rights.svg"),
-            appName     = Sys.getenv("APP_NAME"),
+            appDir       = ".",
+            manifestPath = "manifest.json",
+            appName      = Sys.getenv("APP_NAME"),
             appId       = Sys.getenv("CONNECT_CONTENT_ID"),
             account     = Sys.getenv("CONNECT_ACCOUNT"),
             server      = "connect.posit.cloud",
